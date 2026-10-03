@@ -522,7 +522,6 @@ where
             None => true,
         };
 
-        cx.stop_propagation();
         self.selection_mode = SelectionMode::Row;
         self.right_clicked_row = None;
         self.selected_row = Some(row_ix);
@@ -832,6 +831,7 @@ where
 
         let modifiers = e.modifiers();
         if self.select_on_modifier_click || !(modifiers.secondary() || modifiers.shift) {
+            cx.stop_propagation();
             self.set_selected_row(row_ix, cx);
         }
 
@@ -1603,6 +1603,7 @@ where
             .when(!is_head, |this| {
                 this.when(self.row_selectable, |this| {
                     this.on_click(cx.listener(move |table, _, _window, cx| {
+                        cx.stop_propagation();
                         table.set_selected_row(row_ix, cx);
                     }))
                 })
