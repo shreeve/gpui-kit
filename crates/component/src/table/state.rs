@@ -710,7 +710,7 @@ where
             .map(|col_ix| {
                 let column = self.delegate().column(col_ix, cx);
                 ColGroup {
-                    width: column.width,
+                    width: column.width.clamp(column.min_width, column.max_width),
                     bounds: Bounds::default(),
                     column,
                 }
@@ -2639,5 +2639,63 @@ where
                         ),
                 )
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::{App, TestAppContext, div};
+
+    use super::*;
+
+    struct WidthsDelegate;
+
+    impl TableDelegate for WidthsDelegate {
+        fn columns_count(&self, _: &App) -> usize {
+            2
+        }
+
+        fn rows_count(&self, _: &App) -> usize {
+            0
+        }
+
+        fn column(&self, col_ix: usize, _: &App) -> Column {
+            match col_ix {
+                0 => Column::new("narrow", "Narrow")
+                    .min_width(px(80.))
+                    .width(px(40.)),
+                _ => Column::new("wide", "Wide")
+                    .max_width(px(120.))
+                    .width(px(300.)),
+            }
+        }
+
+        fn render_td(
+            &mut self,
+            _: usize,
+            _: usize,
+            _: &mut Window,
+            _: &mut Context<TableState<Self>>,
+        ) -> impl IntoElement {
+            div()
+        }
+    }
+
+    #[gpui::test]
+    fn initial_column_width_is_clamped(cx: &mut TestAppContext) {
+        cx.skip_drawing();
+        let window = cx.add_window(|window, cx| TableState::new(WidthsDelegate, window, cx));
+
+        let widths = window
+            .update(cx, |table, _, _| {
+                table
+                    .col_groups
+                    .iter()
+                    .map(|col_group| col_group.width)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap();
+
+        assert_eq!(widths, [px(80.), px(120.)]);
     }
 }
