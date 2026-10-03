@@ -82,6 +82,18 @@ resizable_panel()
     .child("Constrained Panel")
 ```
 
+### 固定面板
+
+固定面板在窗口改变大小时保持自身尺寸，其余面板按各自尺寸的比例分摊差值；拖动分隔条仍可调整它的大小。适合侧边栏、检查器这类应保持用户所设宽度的面板。
+
+```rust
+resizable_panel()
+    .size(px(240.))
+    .size_range(px(160.)..px(480.))
+    .fixed()
+    .child("Sidebar")
+```
+
 ### 多面板布局
 
 ```rust

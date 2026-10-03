@@ -86,6 +86,20 @@ resizable_panel()
     .child("Constrained Panel")
 ```
 
+### Fixed Panels
+
+A fixed panel keeps its size when the window resizes; the other panels share the
+difference in proportion to their sizes. Dragging its handle still resizes it.
+Use it for a sidebar or an inspector that should keep the width the user gave it.
+
+```rust
+resizable_panel()
+    .size(px(240.))
+    .size_range(px(160.)..px(480.))
+    .fixed()
+    .child("Sidebar")
+```
+
 ### Multiple Panels
 
 ```rust

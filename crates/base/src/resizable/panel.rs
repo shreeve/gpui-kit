@@ -247,6 +247,7 @@ pub struct ResizablePanel {
     visible: bool,
     style: StyleRefinement,
     handle_appearance: Option<ResizeHandleRenderer>,
+    fixed: bool,
 }
 
 impl ResizablePanel {
@@ -262,6 +263,7 @@ impl ResizablePanel {
             visible: true,
             style: StyleRefinement::default(),
             handle_appearance: None,
+            fixed: false,
         }
     }
 
@@ -282,6 +284,16 @@ impl ResizablePanel {
     /// Default is [`PANEL_MIN_SIZE`] to [`Pixels::MAX`].
     pub fn size_range(mut self, range: impl Into<Range<Pixels>>) -> Self {
         self.size_range = range.into();
+        self
+    }
+
+    /// Keep this panel's size when the group's container resizes.
+    ///
+    /// Dragging a handle still resizes it. When the container grows or
+    /// shrinks, the other panels share the difference in proportion to their
+    /// sizes, so a sidebar or an inspector keeps the width the user gave it.
+    pub fn fixed(mut self) -> Self {
+        self.fixed = true;
         self
     }
 }
@@ -351,11 +363,21 @@ impl RenderOnce for ResizablePanel {
                 Some(size) => this.flex_basis(size.min(size_range.end).max(size_range.start)),
                 None => this,
             })
+            // A fixed panel neither grows nor shrinks with the container, so
+            // the first frame of a resize already has its size. Not
+            // `flex_none`, which also resets the basis set above.
+            .when(self.fixed, |this| this.flex_grow_0().flex_shrink_0())
             .on_prepaint({
                 let state = state.clone();
                 move |bounds, _, cx| {
                     state.update(cx, |state, cx| {
-                        state.update_panel_size(self.panel_ix, bounds, self.size_range, cx)
+                        state.update_panel_size(
+                            self.panel_ix,
+                            bounds,
+                            self.size_range,
+                            self.fixed,
+                            cx,
+                        )
                     })
                 }
             })
