@@ -291,17 +291,12 @@ impl<M: InputModeKind> Element for EditorScrollbar<M> {
     }
 }
 
-fn clamp_auto_grow_vertical_scroll_offset(
-    mode: &LayoutMode,
+fn clamp_vertical_scroll_offset(
     scroll_top: Pixels,
     scroll_height: Pixels,
     input_height: Pixels,
 ) -> Pixels {
-    if mode.is_auto_grow() {
-        scroll_top.clamp((input_height - scroll_height).min(px(0.)), px(0.))
-    } else {
-        scroll_top
-    }
+    scroll_top.clamp((input_height - scroll_height).min(px(0.)), px(0.))
 }
 
 fn editor_gutter_bounds(
@@ -697,12 +692,8 @@ impl<M: InputModeKind> TextElement<M> {
         if let Some(deferred_scroll_offset) = state.deferred_scroll_offset {
             scroll_offset = deferred_scroll_offset;
         }
-        scroll_offset.y = clamp_auto_grow_vertical_scroll_offset(
-            &state.mode,
-            scroll_offset.y,
-            scroll_size.height,
-            bounds.size.height,
-        );
+        scroll_offset.y =
+            clamp_vertical_scroll_offset(scroll_offset.y, scroll_size.height, bounds.size.height);
 
         bounds.origin = bounds.origin + scroll_offset;
 
@@ -1028,12 +1019,15 @@ impl<M: InputModeKind> TextElement<M> {
         } else {
             state.scroll_handle.offset().y
         };
-        scroll_top = clamp_auto_grow_vertical_scroll_offset(
-            &state.mode,
-            scroll_top,
-            line_height * total_lines,
-            input_height,
-        );
+        // Same range as `layout_cursors`, so we lay out the rows we paint.
+        let scroll_height = line_height * total_lines
+            + empty_bottom_height(
+                state.is_code_editor(),
+                state.scroll_beyond_last_line,
+                input_height,
+                line_height,
+            );
+        scroll_top = clamp_vertical_scroll_offset(scroll_top, scroll_height, input_height);
 
         // Display rows are uniformly `line_height` tall, so the visible window maps
         // directly to a display-row range.
@@ -3659,6 +3653,53 @@ mod tests {
         (editor.unwrap(), window)
     }
 
+    struct TextareaHarness(Entity<crate::input::TextareaState>);
+
+    impl Render for TextareaHarness {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(self.0.clone())
+        }
+    }
+
+    #[gpui::test]
+    fn set_scroll_offset_past_the_end_is_clamped(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let text = (1..=40)
+            .map(|line| format!("line {line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut textarea = None;
+        let window = cx.open_window(size(px(240.), px(400.)), |window, cx| {
+            let state =
+                cx.new(|cx| crate::input::TextareaState::new(window, cx).default_value(text));
+            textarea = Some(state.clone());
+            TextareaHarness(state)
+        });
+        let textarea = textarea.unwrap();
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            textarea.update(cx, |state, cx| {
+                state.set_scroll_offset(point(px(0.), px(-10_000.)), cx)
+            });
+            window.draw(cx).clear(cx);
+
+            let state = textarea.read(cx);
+            let painted = state
+                .editor_scrollbar_snapshot
+                .get()
+                .unwrap()
+                .cursor_scroll_offset;
+            let furthest = (state.input_bounds.size.height - state.scroll_size.height).min(px(0.));
+            assert!(furthest < px(0.));
+            assert_eq!(painted.y, furthest);
+
+            let layout = state.last_layout.as_ref().unwrap();
+            let rows = viewport_visible_lines(state.input_bounds.size.height, layout.line_height);
+            assert!(layout.visible_range.len() >= rows);
+        });
+    }
+
     #[gpui::test]
     fn editor_line_number_gutter_resizes_with_document_lines(cx: &mut TestAppContext) {
         let (editor, window) = decoration_editor(cx, &"x\n".repeat(8), false);
@@ -4180,26 +4221,22 @@ mod tests {
     }
 
     #[test]
-    fn test_auto_grow_scroll_offset_is_clamped_to_current_viewport() {
-        let mode = LayoutMode::auto_grow(3, 8);
-
+    fn test_vertical_scroll_offset_is_clamped_to_current_viewport() {
         assert_eq!(
-            clamp_auto_grow_vertical_scroll_offset(&mode, px(-260.), px(340.), px(160.)),
+            clamp_vertical_scroll_offset(px(-260.), px(340.), px(160.)),
             px(-180.)
         );
         assert_eq!(
-            clamp_auto_grow_vertical_scroll_offset(&mode, px(-40.), px(340.), px(160.)),
+            clamp_vertical_scroll_offset(px(-40.), px(340.), px(160.)),
             px(-40.)
         );
         assert_eq!(
-            clamp_auto_grow_vertical_scroll_offset(&mode, px(20.), px(340.), px(160.)),
+            clamp_vertical_scroll_offset(px(20.), px(340.), px(160.)),
             px(0.)
         );
-
-        let plain_text = LayoutMode::plain_text();
         assert_eq!(
-            clamp_auto_grow_vertical_scroll_offset(&plain_text, px(-260.), px(340.), px(160.)),
-            px(-260.)
+            clamp_vertical_scroll_offset(px(-40.), px(100.), px(160.)),
+            px(0.)
         );
     }
 
