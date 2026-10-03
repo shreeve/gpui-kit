@@ -504,7 +504,6 @@ where
             None => true,
         };
 
-        cx.stop_propagation();
         self.selection_mode = SelectionMode::Row;
         self.right_clicked_row = None;
         self.selected_row = Some(row_ix);
@@ -812,6 +811,7 @@ where
             return;
         }
 
+        cx.stop_propagation();
         self.set_selected_row(row_ix, cx);
 
         if e.click_count() == 2 {
@@ -1582,6 +1582,7 @@ where
             .when(!is_head, |this| {
                 this.when(self.row_selectable, |this| {
                     this.on_click(cx.listener(move |table, _, _window, cx| {
+                        cx.stop_propagation();
                         table.set_selected_row(row_ix, cx);
                     }))
                 })
