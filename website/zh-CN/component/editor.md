@@ -291,6 +291,16 @@ Editor::new(&editor)
 这些就是所有元素都有的 [`Styled`](https://docs.rs/gpui/latest/gpui/trait.Styled.html)
 方法，`font_weight`、`line_height` 用法相同。
 
+## 尺寸
+
+```rust
+Editor::new(&editor).large()
+Editor::new(&editor) // medium（默认）
+Editor::new(&editor).xsmall()
+```
+
+尺寸决定代码四周的内边距。代码的字号仍沿用编辑器的字体设置（见[字体](#字体)），高度由 `h` 设置。`xsmall` 去掉代码上下的内边距，适合紧贴面板边缘的编辑器。
+
 ## 外观
 
 ```rust

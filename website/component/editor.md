@@ -343,6 +343,18 @@ Editor::new(&editor)
 These are the ordinary [`Styled`](https://docs.rs/gpui/latest/gpui/trait.Styled.html)
 methods every element has, so `font_weight` and `line_height` work the same way.
 
+## Sizes
+
+```rust
+Editor::new(&editor).large()
+Editor::new(&editor) // medium (default)
+Editor::new(&editor).xsmall()
+```
+
+The size sets the padding around the code. The code keeps the editor's font
+size (see [Font](#font)), and `h` sets the height. `xsmall` leaves no padding
+above and below the code, for an editor that sits flush inside a panel.
+
 ## Appearance
 
 ```rust
