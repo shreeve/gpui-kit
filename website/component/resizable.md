@@ -88,9 +88,10 @@ resizable_panel()
 
 ### Fixed Panels
 
-A fixed panel keeps its size when the window resizes; the other panels share the
-difference in proportion to their sizes. Dragging its handle still resizes it.
-Use it for a sidebar or an inspector that should keep the width the user gave it.
+A fixed panel keeps its size when its group's container resizes; the other
+panels share the difference in proportion to their sizes. Dragging its own
+handle still resizes it. Use it for a sidebar or an inspector that should keep
+the width the user gave it. A fixed panel needs a `size`.
 
 ```rust
 resizable_panel()

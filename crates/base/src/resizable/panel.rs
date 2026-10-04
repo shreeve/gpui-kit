@@ -221,6 +221,9 @@ impl RenderOnce for ResizablePanelGroup {
 /// internally, so a sized panel that should hold its width when a
 /// sibling collapses needs to opt out of growth via `.flex_none()`.
 ///
+/// To keep a panel's size when the group's container resizes, use
+/// [`ResizablePanel::fixed`].
+///
 /// ```ignore
 /// h_resizable("layout")
 ///     .child(resizable_panel().size(px(220.)).flex_none().child(sidebar))
@@ -289,9 +292,11 @@ impl ResizablePanel {
 
     /// Keep this panel's size when the group's container resizes.
     ///
-    /// Dragging a handle still resizes it. When the container grows or
-    /// shrinks, the other panels share the difference in proportion to their
-    /// sizes, so a sidebar or an inspector keeps the width the user gave it.
+    /// When the container grows or shrinks, the other panels share the
+    /// difference in proportion to their sizes, so a sidebar or an inspector
+    /// keeps the width the user gave it. Dragging its own handle still resizes
+    /// it. It needs a [`Self::size`], and at least one panel in the group
+    /// should not be fixed.
     pub fn fixed(mut self) -> Self {
         self.fixed = true;
         self
@@ -325,6 +330,8 @@ impl RenderOnce for ResizablePanel {
             .get(self.panel_ix)
             .expect("BUG: The `index` of ResizablePanel should be one of in `state`.");
         let size_range = self.size_range.clone();
+        // A fixed panel needs a size to keep; without one it lays out as usual.
+        let fixed = self.fixed && self.initial_size.is_some();
 
         div()
             .id(("resizable-panel", self.panel_ix))
@@ -366,18 +373,12 @@ impl RenderOnce for ResizablePanel {
             // A fixed panel neither grows nor shrinks with the container, so
             // the first frame of a resize already has its size. Not
             // `flex_none`, which also resets the basis set above.
-            .when(self.fixed, |this| this.flex_grow_0().flex_shrink_0())
+            .when(fixed, |this| this.flex_grow_0().flex_shrink_0())
             .on_prepaint({
                 let state = state.clone();
                 move |bounds, _, cx| {
                     state.update(cx, |state, cx| {
-                        state.update_panel_size(
-                            self.panel_ix,
-                            bounds,
-                            self.size_range,
-                            self.fixed,
-                            cx,
-                        )
+                        state.update_panel_size(self.panel_ix, bounds, self.size_range, fixed, cx)
                     })
                 }
             })

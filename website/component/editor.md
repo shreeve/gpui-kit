@@ -351,9 +351,9 @@ Editor::new(&editor) // medium (default)
 Editor::new(&editor).xsmall()
 ```
 
-The size sets the padding around the code. The code keeps the editor's font
-size (see [Font](#font)), and `h` sets the height. `xsmall` leaves no padding
-above and below the code, for an editor that sits flush inside a panel.
+Unlike `Textarea`, the size changes only the padding around the code, not the
+font size (see [Font](#font)). `xsmall` leaves no padding above and below the
+code.
 
 ## Appearance
 

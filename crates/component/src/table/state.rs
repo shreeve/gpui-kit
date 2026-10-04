@@ -371,8 +371,6 @@ where
 
     /// Set whether a row click with the secondary modifier or Shift held
     /// selects the row, default is `true`.
-    ///
-    /// See [`Self::select_on_modifier_click`].
     pub fn select_on_modifier_click(mut self, select_on_modifier_click: bool) -> Self {
         self.select_on_modifier_click = select_on_modifier_click;
         self
@@ -829,15 +827,20 @@ where
             return;
         }
 
-        let modifiers = e.modifiers();
-        if self.select_on_modifier_click || !(modifiers.secondary() || modifiers.shift) {
-            cx.stop_propagation();
+        cx.stop_propagation();
+        if self.selects_row_on_click(e) {
             self.set_selected_row(row_ix, cx);
         }
 
         if e.click_count() == 2 {
             cx.emit(TableEvent::DoubleClickedRow(row_ix));
         }
+    }
+
+    /// Whether a click on a row selects it, see `select_on_modifier_click`.
+    fn selects_row_on_click(&self, e: &ClickEvent) -> bool {
+        let modifiers = e.modifiers();
+        self.select_on_modifier_click || !(modifiers.secondary() || modifiers.shift)
     }
 
     fn on_col_head_click(&mut self, col_ix: usize, _: &mut Window, cx: &mut Context<Self>) {
@@ -1014,16 +1017,16 @@ where
             return;
         }
 
-        // Column selection mode
-        if self.selection_mode.is_column() {
-            self.set_selected_col(0, cx);
+        // Row selection mode: Home goes to the first row, as in a list
+        if self.selection_mode.is_row() && self.row_selectable {
+            if self.delegate.rows_count(cx) > 0 {
+                self.set_selected_row(0, cx);
+            }
             return;
         }
 
-        // Row selection mode
-        if self.row_selectable && self.delegate.rows_count(cx) > 0 {
-            self.set_selected_row(0, cx);
-        }
+        // Column selection mode
+        self.set_selected_col(0, cx);
     }
 
     pub(super) fn action_select_last_column(
@@ -1045,17 +1048,17 @@ where
             return;
         }
 
-        // Column selection mode
-        if self.selection_mode.is_column() {
-            self.set_selected_col(columns_count.saturating_sub(1), cx);
+        // Row selection mode: End goes to the last row, as in a list
+        if self.selection_mode.is_row() && self.row_selectable {
+            let rows_count = self.delegate.rows_count(cx);
+            if rows_count > 0 {
+                self.set_selected_row(rows_count - 1, cx);
+            }
             return;
         }
 
-        // Row selection mode
-        let rows_count = self.delegate.rows_count(cx);
-        if self.row_selectable && rows_count > 0 {
-            self.set_selected_row(rows_count - 1, cx);
-        }
+        // Column selection mode
+        self.set_selected_col(columns_count.saturating_sub(1), cx);
     }
 
     pub(super) fn action_select_page_up(
@@ -1237,7 +1240,9 @@ where
         let mut changed = false;
         if let Some(col_group) = self.col_groups.get_mut(ix) {
             if col_group.is_resizable() {
-                let new_width = size.clamp(col_group.column.min_width, col_group.column.max_width);
+                let new_width = size
+                    .max(col_group.column.min_width)
+                    .min(col_group.column.max_width);
                 if col_group.width != new_width {
                     col_group.width = new_width;
                     changed = true;
@@ -1602,6 +1607,22 @@ where
     }
 
     /// Render the row header cell (when cell_selectable is enabled)
+    /// The border on the right edge of the fixed columns, unless turned off
+    /// with [`DataTable::fixed_cols_border`].
+    fn render_fixed_cols_border(&self, cx: &App) -> Option<Div> {
+        self.options.fixed_cols_border.then(|| {
+            div()
+                .absolute()
+                .top_0()
+                .right_0()
+                .bottom_0()
+                .w_0()
+                .flex_shrink_0()
+                .border_r_1()
+                .border_color(cx.theme().border)
+        })
+    }
+
     fn render_row_header_cell(
         &self,
         row_ix: usize,
@@ -1619,9 +1640,11 @@ where
             .table_cell_size(self.options.size)
             .when(!is_head, |this| {
                 this.when(self.row_selectable, |this| {
-                    this.on_click(cx.listener(move |table, _, _window, cx| {
+                    this.on_click(cx.listener(move |table, e: &ClickEvent, _window, cx| {
                         cx.stop_propagation();
-                        table.set_selected_row(row_ix, cx);
+                        if table.selects_row_on_click(e) {
+                            table.set_selected_row(row_ix, cx);
+                        }
                     }))
                 })
             })
@@ -1931,20 +1954,7 @@ where
                                     }))
                             }),
                         ))
-                        .when(self.options.fixed_cols_border, |this| {
-                            this.child(
-                                // Fixed columns border
-                                div()
-                                    .absolute()
-                                    .top_0()
-                                    .right_0()
-                                    .bottom_0()
-                                    .w_0()
-                                    .flex_shrink_0()
-                                    .border_r_1()
-                                    .border_color(cx.theme().border),
-                            )
-                        })
+                        .children(self.render_fixed_cols_border(cx))
                         .on_prepaint(move |bounds, _, cx| {
                             view.update(cx, |r, _| r.fixed_head_cols_bounds = bounds)
                         }),
@@ -2156,20 +2166,7 @@ where
 
                                 items
                             })
-                            .when(self.options.fixed_cols_border, |this| {
-                                this.child(
-                                    // Fixed columns border
-                                    div()
-                                        .absolute()
-                                        .top_0()
-                                        .right_0()
-                                        .bottom_0()
-                                        .w_0()
-                                        .flex_shrink_0()
-                                        .border_r_1()
-                                        .border_color(cx.theme().border),
-                                )
-                            }),
+                            .children(self.render_fixed_cols_border(cx)),
                     )
                 })
                 .child(

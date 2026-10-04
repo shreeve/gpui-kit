@@ -10282,21 +10282,23 @@ impl InputBaseState<crate::input::EditorMode> {
         self
     }
 
-    /// The soft-wrapped row count from the last layout, the count the scroll
-    /// height uses.
+    /// The number of rows the text takes once soft wrapped, the count the
+    /// scroll height uses.
     ///
     /// The buffer's line count undercounts it whenever a line wraps, so a host
     /// that sizes an editor to its content, such as a read-only one, uses this.
+    /// It is 0 until the editor is laid out or [`Self::prewrap`] is called.
     pub fn wrap_row_count(&self) -> usize {
         self.display_map.wrap_row_count()
     }
 
-    /// Wrap the text for `font`, `font_size` and `width` ahead of layout, so
-    /// that [`Self::wrap_row_count`] is right before the first paint.
+    /// Wrap the text for `font`, `font_size` and `width` before the first
+    /// layout, so that [`Self::wrap_row_count`] is known on the first frame.
     ///
-    /// `width` is the width the text wraps at, which is the editor's text
-    /// width less its gutter and right margin. Layout stays the source of truth
-    /// afterwards.
+    /// Call it after setting the value. `width` is the width the text wraps
+    /// at: the editor's text width, without its line-number gutter and
+    /// padding. Once the editor has been laid out this does nothing, and
+    /// layout keeps the wrap up to date.
     pub fn prewrap(
         &mut self,
         font: gpui::Font,
@@ -10304,19 +10306,24 @@ impl InputBaseState<crate::input::EditorMode> {
         width: Pixels,
         cx: &mut Context<Self>,
     ) {
-        self.display_map.ensure_text_prepared(&self.text, cx);
+        if self.last_layout.is_some() {
+            return;
+        }
         self.display_map.set_font(font, font_size, cx);
-        self.display_map.on_layout_changed(Some(width), cx);
+        self.display_map
+            .on_layout_changed(self.soft_wrap.then_some(width), cx);
+        self.display_map.ensure_text_prepared(&self.text, cx);
     }
 
     /// Set line number.
     pub fn set_line_number(&mut self, line_number: bool, _: &mut Window, cx: &mut Context<Self>) {
-        if let LayoutMode::CodeEditor { line_number: l, .. } = &mut self.mode
-            && *l != line_number
-        {
+        if let LayoutMode::CodeEditor { line_number: l, .. } = &mut self.mode {
+            if *l == line_number {
+                return;
+            }
             *l = line_number;
-            cx.notify();
         }
+        cx.notify();
     }
 
     /// Set enable/disable automatic closing brackets and quotes.

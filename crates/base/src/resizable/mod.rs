@@ -312,6 +312,10 @@ impl ResizableState {
 
             while changed > px(0.) && ix < old_sizes.len() - 1 {
                 ix += 1;
+                // A fixed panel only gives up space to a drag on its own handle.
+                if self.panels[ix].fixed && ix != main_ix + 1 {
+                    continue;
+                }
                 let size_range = self.panel_size_range(ix);
                 let available_size = (new_sizes[ix] - size_range.start).max(px(0.));
                 let to_reduce = changed.min(available_size);
@@ -324,6 +328,9 @@ impl ResizableState {
 
             while changed > px(0.) && ix > 0 {
                 ix -= 1;
+                if self.panels[ix].fixed {
+                    continue;
+                }
                 let size_range = self.panel_size_range(ix);
                 let available_size = (new_sizes[ix] - size_range.start).max(px(0.));
                 let to_reduce = changed.min(available_size);
@@ -485,12 +492,14 @@ mod tests {
 
     struct FixedPanelHarness {
         width: Pixels,
+        state: gpui::Entity<ResizableState>,
     }
 
     impl Render for FixedPanelHarness {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
             div().w(self.width).h(px(100.)).child(
                 h_resizable("fixed-panel")
+                    .with_state(&self.state)
                     .child(
                         resizable_panel()
                             .size(px(240.))
@@ -513,10 +522,18 @@ mod tests {
 
     /// A fixed panel keeps its size when the container resizes, the other
     /// panels share the rest in their proportions, and a container briefly
-    /// too small for the fixed panel does not lose those proportions.
+    /// too small for the fixed panel does not lose those proportions. A drag
+    /// on another handle does not take space from it either.
     #[gpui::test]
     fn fixed_panel_keeps_its_size_across_a_container_resize(cx: &mut TestAppContext) {
-        let (view, cx) = cx.add_window_view(|_, _| FixedPanelHarness { width: px(840.) });
+        let state = cx.update(|cx| cx.new(|_| ResizableState::default()));
+        let (view, cx) = cx.add_window_view({
+            let state = state.clone();
+            move |_, _| FixedPanelHarness {
+                width: px(840.),
+                state,
+            }
+        });
         cx.update(|window, cx| {
             window.draw(cx).clear(cx);
             window.draw(cx).clear(cx);
@@ -534,7 +551,7 @@ mod tests {
         for (width, expected) in [
             (px(1140.), Some([px(240.), px(600.), px(300.)])),
             (px(200.), None),
-            (px(540.), Some([px(240.), px(200.), px(100.)])),
+            (px(600.), Some([px(240.), px(240.), px(120.)])),
         ] {
             view.update(cx, |view, cx| {
                 view.width = width;
@@ -546,6 +563,14 @@ mod tests {
                 assert_eq!(widths(cx), expected, "{width:?}");
             }
         }
+
+        // Dragging the main panel below its minimum takes the rest from the
+        // panel after it, not from the fixed sidebar before it.
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| state.resize_panel(1, px(50.), window, cx));
+            window.draw(cx).clear(cx);
+        });
+        assert_eq!(widths(cx), [px(240.), px(100.), px(260.)]);
     }
 
     struct CallerStateHarness {

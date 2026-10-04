@@ -1020,7 +1020,8 @@ impl<M: InputModeKind> TextElement<M> {
             state.scroll_handle.offset().y
         };
         // Clamp as `layout_cursors` does, so we lay out the rows we paint.
-        // Ghost lines only add room below the last row, so they are left out.
+        // Ghost lines are left out: a tighter clamp only lays out extra rows
+        // above, and the last row stays in range.
         let scroll_height = line_height * total_lines
             + empty_bottom_height(
                 state.is_code_editor(),

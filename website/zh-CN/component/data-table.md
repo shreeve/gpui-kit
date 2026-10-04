@@ -360,6 +360,7 @@ DataTable::new(&state)
     .with_size(px(48.))
     .stripe(true)
     .bordered(true)
+    .fixed_cols_border(true)
     .scrollbar_visible(true, true)
 ```
 
