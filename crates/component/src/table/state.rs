@@ -226,6 +226,14 @@ pub struct TableState<D: TableDelegate> {
     pub col_selectable: bool,
     /// Whether the table can select row.
     pub row_selectable: bool,
+    /// Whether a row click with the secondary modifier (⌘ on macOS, Ctrl
+    /// elsewhere) or Shift held selects the row, default is `true`.
+    ///
+    /// Set to `false` when the delegate keeps its own multi-row selection and
+    /// handles those clicks itself. The table then leaves its selected row
+    /// alone on a modified click, so a click that takes a row out of the
+    /// delegate's selection is not undone by the table selecting it.
+    pub select_on_modifier_click: bool,
     /// Whether the table can select cell, default is false.
     ///
     /// When enabled:
@@ -306,6 +314,7 @@ where
             loop_selection: true,
             col_selectable: true,
             row_selectable: true,
+            select_on_modifier_click: true,
             cell_selectable: false,
             row_header: true,
             sortable: true,
@@ -357,6 +366,13 @@ where
     /// Set to enable/disable row selectable, default true
     pub fn row_selectable(mut self, row_selectable: bool) -> Self {
         self.row_selectable = row_selectable;
+        self
+    }
+
+    /// Set whether a row click with the secondary modifier or Shift held
+    /// selects the row, default is `true`.
+    pub fn select_on_modifier_click(mut self, select_on_modifier_click: bool) -> Self {
+        self.select_on_modifier_click = select_on_modifier_click;
         self
     }
 
@@ -812,11 +828,20 @@ where
             return;
         }
 
-        self.set_selected_row(row_ix, cx);
+        cx.stop_propagation();
+        if self.selects_row_on_click(e) {
+            self.set_selected_row(row_ix, cx);
+        }
 
         if e.click_count() == 2 {
             cx.emit(TableEvent::DoubleClickedRow(row_ix));
         }
+    }
+
+    /// Whether a click on a row selects it, see `select_on_modifier_click`.
+    fn selects_row_on_click(&self, e: &ClickEvent) -> bool {
+        let modifiers = e.modifiers();
+        self.select_on_modifier_click || !(modifiers.secondary() || modifiers.shift)
     }
 
     fn on_col_head_click(&mut self, col_ix: usize, _: &mut Window, cx: &mut Context<Self>) {
@@ -1581,8 +1606,10 @@ where
             .table_cell_size(self.options.size)
             .when(!is_head, |this| {
                 this.when(self.row_selectable, |this| {
-                    this.on_click(cx.listener(move |table, _, _window, cx| {
-                        table.set_selected_row(row_ix, cx);
+                    this.on_click(cx.listener(move |table, e: &ClickEvent, _window, cx| {
+                        if table.selects_row_on_click(e) {
+                            table.set_selected_row(row_ix, cx);
+                        }
                     }))
                 })
             })

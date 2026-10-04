@@ -6,7 +6,8 @@ use gpui_kit::component::{
 };
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{
-    App, AppContext, Context, Entity, Focusable, TestAppContext, Window, div, prelude::*, px, size,
+    App, AppContext, Context, Entity, Focusable, InputEvent as _, Modifiers, MouseButton,
+    MouseDownEvent, MouseUpEvent, TestAppContext, Window, div, prelude::*, px, size,
 };
 
 struct Files {
@@ -255,4 +256,59 @@ fn table_keyboard_leaves_rows_unselected_when_rows_are_not_selectable(cx: &mut T
         assert!(window.find(("row", 0usize)).visible());
     })
     .unwrap();
+}
+
+/// Clicks a row with modifiers held.
+fn click_row_with(window: &mut Window, row: usize, modifiers: Modifiers, cx: &mut App) {
+    window.render_frame(cx);
+    let position = window.find(("row", row)).bounds().center();
+    for event in [
+        MouseDownEvent {
+            button: MouseButton::Left,
+            position,
+            modifiers,
+            click_count: 1,
+            first_mouse: false,
+        }
+        .to_platform_input(),
+        MouseUpEvent {
+            button: MouseButton::Left,
+            position,
+            modifiers,
+            click_count: 1,
+        }
+        .to_platform_input(),
+    ] {
+        window.dispatch_event(event, cx);
+        window.render_frame(cx);
+    }
+}
+
+#[gpui_kit::test]
+fn table_modifier_clicks_select_rows_unless_turned_off(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let secondary = Modifiers::secondary_key();
+    let shift = Modifiers::shift();
+    for (select_on_modifier_click, expected) in [(true, Some(3)), (false, Some(1))] {
+        let (handle, handle_content) =
+            common::open_window(cx, Some(size(px(640.), px(320.))), |window, cx| {
+                cx.new(|cx| Records {
+                    table: cx.new(|cx| {
+                        TableState::new(Rows, window, cx)
+                            .select_on_modifier_click(select_on_modifier_click)
+                    }),
+                })
+            });
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click(("row", 1usize), cx);
+            click_row_with(window, 3, secondary, cx);
+            let table = handle_content.read(cx).table.clone();
+            assert_eq!(table.read(cx).selected_row(), expected);
+            click_row_with(window, 3, shift, cx);
+            assert_eq!(table.read(cx).selected_row(), expected);
+            window.click(("row", 3usize), cx);
+            assert_eq!(table.read(cx).selected_row(), Some(3));
+        })
+        .unwrap();
+    }
 }
