@@ -127,6 +127,31 @@ pub enum InputEvent {
     Blur,
 }
 
+/// The geometry and colors of a line-number gutter styled by its host, so the
+/// numbers can line up with something beside the editor, such as the row
+/// numbers of a table. Every horizontal measure counts from the editor's outer
+/// left edge, its own left padding included.
+///
+/// Set it on an editor with [`InputBaseState::gutter_style`].
+#[derive(Clone, PartialEq)]
+pub struct GutterStyle {
+    /// The width of the gutter's rail.
+    pub width: Pixels,
+    /// The distance from the numbers to the rail's right edge.
+    pub right_inset: Pixels,
+    /// The size of the numbers.
+    pub text_size: Pixels,
+    /// The space between the rail and the text. With line numbers hidden, it
+    /// is the text's whole left inset.
+    pub text_gap: Pixels,
+    /// The rail's fill.
+    pub background: gpui::Hsla,
+    /// The line under each numbered row.
+    pub row_line: gpui::Hsla,
+    /// The rail's right edge, and the rules between sections.
+    pub border: gpui::Hsla,
+}
+
 pub(super) const CONTEXT: &str = "Input";
 
 pub(crate) fn init(cx: &mut App) {
@@ -421,6 +446,19 @@ pub struct InputBaseState<M: InputModeKind> {
     /// The unwrapped width of the longest line and what it was measured for.
     pub(super) longest_line_width: Cell<Option<(LongestLineKey, Pixels)>>,
     pub(super) editor_paddings: Edges<Pixels>,
+    /// A styled line-number gutter, drawn as a rail. See [`GutterStyle`].
+    pub gutter_style: Option<GutterStyle>,
+    /// The label of each buffer row in the gutter, in place of its line
+    /// number. A zero label leaves the row unnumbered, and rows past the end
+    /// are unnumbered too. Labels that restart at 1 begin a new section.
+    pub line_labels: Option<std::rc::Rc<Vec<u32>>>,
+    /// The rows that end a section: a rule spanning the editor is drawn
+    /// under each of them. Without it, a section ends where its labels stop
+    /// counting up by one.
+    pub section_end_rows: Option<std::rc::Rc<Vec<u32>>>,
+    /// Buffer rows whose gutter cells are filled with the given color, for
+    /// example to mark the rows a command will act on.
+    pub marked_rows: Option<(std::ops::Range<usize>, gpui::Hsla)>,
     /// The style this state paints with: what was projected onto it, with
     /// every colour left unset resolved from the palette that is current. It
     /// is rebuilt at the top of every render, which is what keeps it current
@@ -752,6 +790,10 @@ impl<M: InputModeKind> InputBaseState<M> {
             editor_scrollbar_snapshot: Cell::new(None),
             longest_line_width: Cell::new(None),
             editor_paddings: Edges::default(),
+            gutter_style: None,
+            line_labels: None,
+            section_end_rows: None,
+            marked_rows: None,
             deferred_scroll_offset: None,
             placeholder: SharedString::default(),
             mask_pattern: MaskPattern::default(),

@@ -1083,7 +1083,21 @@ impl<M: InputModeKind> TextElement<M> {
         // line count up to seven digits.
         let line_number_len = line_number_len(total_lines);
 
-        let mut line_number_width = if state.mode.line_number() {
+        // A styled gutter takes its own width plus the text gap, so the
+        // numbers line up with whatever the host aligns them to. Its widths
+        // count from the editor's outer edge, which already includes the left
+        // padding. With line numbers hidden, the gap is the text's inset.
+        let host_gutter = state.gutter_style.as_ref().map(|gs| {
+            let reserved = if state.mode.line_number() {
+                gs.width + gs.text_gap
+            } else {
+                gs.text_gap
+            };
+            (reserved - state.editor_paddings.left).max(px(0.))
+        });
+        let mut line_number_width = if let Some(width) = host_gutter {
+            width
+        } else if state.mode.line_number() {
             let empty_line_number = window.text_system().shape_line(
                 "+".repeat(line_number_len).into(),
                 font_size,
@@ -2800,31 +2814,51 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 strikethrough: None,
             }];
 
+            // A styled gutter sets the numbers' size, and labels replace the
+            // line numbers when present.
+            let num_size = state
+                .gutter_style
+                .as_ref()
+                .map_or(text_size, |gs| gs.text_size);
+            let labels = state.line_labels.clone();
+
             // build line numbers
             for (line, &buffer_line) in last_layout
                 .lines
                 .iter()
                 .zip(last_layout.visible_buffer_lines.iter())
             {
-                let line_no: SharedString = format!(
-                    "{:>width$}",
-                    displayed_line_number(buffer_line + 1),
-                    width = line_number_len
-                )
-                .into();
-
-                let runs = if current_row == Some(buffer_line) {
-                    &current_line_runs
-                } else {
-                    &other_line_runs
+                let label = match &labels {
+                    Some(l) => l.get(buffer_line).copied().unwrap_or(0) as usize,
+                    None => buffer_line + 1,
                 };
 
                 let mut sub_lines: SmallVec<[ShapedLine; 1]> = SmallVec::new();
-                sub_lines.push(
-                    window
-                        .text_system()
-                        .shape_line(line_no, text_size, &runs, None),
-                );
+                // A zero label leaves the row unnumbered.
+                if label == 0 {
+                    sub_lines.push(ShapedLine::default());
+                } else {
+                    let line_no: SharedString = format!(
+                        "{:>width$}",
+                        displayed_line_number(label),
+                        width = line_number_len
+                    )
+                    .into();
+
+                    let runs = if current_row == Some(buffer_line) {
+                        &current_line_runs
+                    } else {
+                        &other_line_runs
+                    };
+                    let mut runs = runs.clone();
+                    runs[0].len = line_no.len();
+
+                    sub_lines.push(
+                        window
+                            .text_system()
+                            .shape_line(line_no, num_size, &runs, None),
+                    );
+                }
                 for _ in 0..line.wrapped_lines.len().saturating_sub(1) {
                     sub_lines.push(ShapedLine::default());
                 }
@@ -3126,13 +3160,45 @@ impl<M: InputModeKind> Element for TextElement<M> {
             let gutter_bg = editor_style
                 .editor_gutter_background
                 .unwrap_or(editor_background);
-            let gutter_bounds = editor_gutter_bounds(
+            let mut gutter_bounds = editor_gutter_bounds(
                 input_bounds,
                 prepaint.last_layout.line_number_width,
                 prepaint.ghost_lines_height,
                 editor_paddings,
             );
+            // Round the backdrop's top up to a whole pixel. An editor placed
+            // on a half pixel would otherwise cover the bottom half of a
+            // border drawn just above it. Whole-pixel origins are unchanged.
+            let backdrop_top = gutter_bounds.origin.y.ceil();
+            gutter_bounds.size.height -= backdrop_top - gutter_bounds.origin.y;
+            gutter_bounds.origin.y = backdrop_top;
             window.paint_quad(fill(gutter_bounds, gutter_bg));
+
+            let (marked_rows, gutter, row_labels, end_rows) = {
+                let state = self.state.read(cx);
+                (
+                    state.marked_rows.clone(),
+                    state.gutter_style.clone(),
+                    state.line_labels.clone(),
+                    state.section_end_rows.clone(),
+                )
+            };
+            // The rail starts at the editor's outer left edge, and the rules
+            // between sections reach its outer right edge.
+            let rail_x = gutter_bounds.origin.x;
+            let full_w = input_bounds.size.width + editor_paddings.left + editor_paddings.right;
+
+            // The rail's fill and right edge run the editor's full height,
+            // past the last line too; the row lines go on top in the loop.
+            if let Some(gs) = &gutter {
+                let rp = point(rail_x, gutter_bounds.origin.y);
+                let rh = gutter_bounds.size.height;
+                window.paint_quad(fill(Bounds::new(rp, size(gs.width, rh)), gs.background));
+                window.paint_quad(fill(
+                    Bounds::new(point(rp.x + gs.width - px(1.), rp.y), size(px(1.), rh)),
+                    gs.border,
+                ));
+            }
 
             // Each item is the normal lines.
             for (lines, &buffer_line) in line_numbers
@@ -3143,8 +3209,70 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 let is_active = prepaint.current_row == Some(buffer_line);
 
                 let height = line_height * lines.len() as f32;
-                // paint active line number background
-                if is_active {
+                // Each row ends in exactly one line: the rail's row line, or,
+                // where a section ends, a rule across the whole editor in its
+                // place, so two lines never stack. The first row has no line
+                // above it; the editor's top edge belongs to whatever is above.
+                if let Some(gs) = &gutter {
+                    // With labels, a row past the end is unnumbered (0), so a
+                    // section that ends on the last line still closes.
+                    let row = buffer_line;
+                    let label = match &row_labels {
+                        Some(l) => l.get(row).copied().unwrap_or(0),
+                        None => row as u32 + 1,
+                    };
+                    let next_label = match &row_labels {
+                        Some(l) => l.get(row + 1).copied().unwrap_or(0),
+                        None => row as u32 + 2,
+                    };
+                    let rw = gs.width;
+                    // Lines go on whole pixels even when the text sits on a
+                    // half pixel. The marked fill spans between the rounded
+                    // lines, so it never covers half of the line above it.
+                    let row_top = (p.y - px(1.)).round() + px(1.);
+                    let row_bot = (p.y + height - px(1.)).round();
+                    // Marked rows fill their rail cells, under the lines and
+                    // numbers, stopping short of the rail's right edge.
+                    if let Some((mark, color)) = &marked_rows {
+                        if mark.contains(&row) {
+                            window.paint_quad(fill(
+                                Bounds::new(
+                                    point(rail_x, row_top),
+                                    size(rw - px(1.), row_bot - row_top),
+                                ),
+                                *color,
+                            ));
+                        }
+                    }
+                    // A rule across the editor when this row ends a section
+                    // or the next row starts one, else the rail's row line.
+                    // `section_end_rows` names the ends; without it, a
+                    // section ends where its labels stop counting up.
+                    let ends = match &end_rows {
+                        Some(e) => e.contains(&(row as u32)),
+                        None => label > 0 && next_label != label + 1,
+                    };
+                    let begins_next = next_label == 1;
+                    if ends || begins_next {
+                        window.paint_quad(fill(
+                            Bounds::new(point(rail_x, row_bot), size(full_w, px(1.))),
+                            gs.border,
+                        ));
+                    } else if label == 0 && next_label == 0 {
+                        // No line between two unnumbered rows, so a run of
+                        // them reads as one gap.
+                    } else {
+                        // One pixel short of the right edge, so the edge
+                        // stays unbroken.
+                        window.paint_quad(fill(
+                            Bounds::new(point(rail_x, row_bot), size(rw - px(1.), px(1.))),
+                            gs.row_line,
+                        ));
+                    }
+                }
+                // paint active line number background, unless a styled gutter
+                // paints the rail, whose cells stay uniform.
+                if is_active && gutter.is_none() {
                     if let Some(bg_color) = active_line_color {
                         window.paint_quad(fill(
                             Bounds::new(
@@ -3157,6 +3285,15 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 }
 
                 for line in lines {
+                    // A styled gutter right-aligns its numbers to its width
+                    // less `right_inset`.
+                    let p = match &gutter {
+                        Some(gs) => point(
+                            rail_x + (gs.width - gs.right_inset - line.width).max(px(0.)),
+                            p.y,
+                        ),
+                        None => p,
+                    };
                     _ = line.paint(p, line_height, TextAlign::Left, None, window, cx);
                     offset_y += line_height;
                 }
