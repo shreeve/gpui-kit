@@ -226,6 +226,14 @@ pub struct TableState<D: TableDelegate> {
     pub col_selectable: bool,
     /// Whether the table can select row.
     pub row_selectable: bool,
+    /// Whether a row click with the secondary modifier (⌘ on macOS, Ctrl
+    /// elsewhere) or Shift held selects the row, default is `true`.
+    ///
+    /// Set to `false` when the delegate keeps its own multi-row selection and
+    /// handles those clicks itself. The table then leaves its selected row
+    /// alone on a modified click, so a click that takes a row out of the
+    /// delegate's selection is not undone by the table selecting it.
+    pub select_on_modifier_click: bool,
     /// Whether the table can select cell, default is false.
     ///
     /// When enabled:
@@ -306,6 +314,7 @@ where
             loop_selection: true,
             col_selectable: true,
             row_selectable: true,
+            select_on_modifier_click: true,
             cell_selectable: false,
             row_header: true,
             sortable: true,
@@ -357,6 +366,15 @@ where
     /// Set to enable/disable row selectable, default true
     pub fn row_selectable(mut self, row_selectable: bool) -> Self {
         self.row_selectable = row_selectable;
+        self
+    }
+
+    /// Set whether a row click with the secondary modifier or Shift held
+    /// selects the row, default is `true`.
+    ///
+    /// See [`Self::select_on_modifier_click`].
+    pub fn select_on_modifier_click(mut self, select_on_modifier_click: bool) -> Self {
+        self.select_on_modifier_click = select_on_modifier_click;
         self
     }
 
@@ -812,7 +830,10 @@ where
             return;
         }
 
-        self.set_selected_row(row_ix, cx);
+        let modifiers = e.modifiers();
+        if self.select_on_modifier_click || !(modifiers.secondary() || modifiers.shift) {
+            self.set_selected_row(row_ix, cx);
+        }
 
         if e.click_count() == 2 {
             cx.emit(TableEvent::DoubleClickedRow(row_ix));

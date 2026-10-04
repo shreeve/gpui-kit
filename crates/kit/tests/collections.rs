@@ -256,3 +256,59 @@ fn table_keyboard_leaves_rows_unselected_when_rows_are_not_selectable(cx: &mut T
     })
     .unwrap();
 }
+
+/// Clicks a row with modifiers held, the way the test helpers click.
+fn click_row_with(window: &mut Window, row: usize, modifiers: gpui_kit::Modifiers, cx: &mut App) {
+    use gpui_kit::InputEvent as _;
+    window.render_frame(cx);
+    let position = window.find(("row", row)).bounds().center();
+    for event in [
+        gpui_kit::MouseDownEvent {
+            button: gpui_kit::MouseButton::Left,
+            position,
+            modifiers,
+            click_count: 1,
+            first_mouse: false,
+        }
+        .to_platform_input(),
+        gpui_kit::MouseUpEvent {
+            button: gpui_kit::MouseButton::Left,
+            position,
+            modifiers,
+            click_count: 1,
+        }
+        .to_platform_input(),
+    ] {
+        window.dispatch_event(event, cx);
+        window.render_frame(cx);
+    }
+}
+
+#[gpui_kit::test]
+fn table_modifier_clicks_select_rows_unless_turned_off(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let secondary = gpui_kit::Modifiers::secondary_key();
+    let shift = gpui_kit::Modifiers::shift();
+    for (select_on_modifier_click, expected) in [(true, Some(3)), (false, Some(1))] {
+        let (handle, handle_content) =
+            common::open_window(cx, Some(size(px(640.), px(320.))), |window, cx| {
+                cx.new(|cx| Records {
+                    table: cx.new(|cx| {
+                        TableState::new(Rows, window, cx)
+                            .select_on_modifier_click(select_on_modifier_click)
+                    }),
+                })
+            });
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click(("row", 1usize), cx);
+            click_row_with(window, 3, secondary, cx);
+            let table = handle_content.read(cx).table.clone();
+            assert_eq!(table.read(cx).selected_row(), expected);
+            click_row_with(window, 3, shift, cx);
+            assert_eq!(table.read(cx).selected_row(), expected);
+            window.click(("row", 3usize), cx);
+            assert_eq!(table.read(cx).selected_row(), Some(3));
+        })
+        .unwrap();
+    }
+}
