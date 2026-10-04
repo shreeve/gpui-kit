@@ -1913,18 +1913,20 @@ where
                                     }))
                             }),
                         ))
-                        .child(
-                            // Fixed columns border
-                            div()
-                                .absolute()
-                                .top_0()
-                                .right_0()
-                                .bottom_0()
-                                .w_0()
-                                .flex_shrink_0()
-                                .border_r_1()
-                                .border_color(cx.theme().border),
-                        )
+                        .when(self.options.fixed_cols_border, |this| {
+                            this.child(
+                                // Fixed columns border
+                                div()
+                                    .absolute()
+                                    .top_0()
+                                    .right_0()
+                                    .bottom_0()
+                                    .w_0()
+                                    .flex_shrink_0()
+                                    .border_r_1()
+                                    .border_color(cx.theme().border),
+                            )
+                        })
                         .on_prepaint(move |bounds, _, cx| {
                             view.update(cx, |r, _| r.fixed_head_cols_bounds = bounds)
                         }),
@@ -2136,18 +2138,20 @@ where
 
                                 items
                             })
-                            .child(
-                                // Fixed columns border
-                                div()
-                                    .absolute()
-                                    .top_0()
-                                    .right_0()
-                                    .bottom_0()
-                                    .w_0()
-                                    .flex_shrink_0()
-                                    .border_r_1()
-                                    .border_color(cx.theme().border),
-                            ),
+                            .when(self.options.fixed_cols_border, |this| {
+                                this.child(
+                                    // Fixed columns border
+                                    div()
+                                        .absolute()
+                                        .top_0()
+                                        .right_0()
+                                        .bottom_0()
+                                        .w_0()
+                                        .flex_shrink_0()
+                                        .border_r_1()
+                                        .border_color(cx.theme().border),
+                                )
+                            }),
                     )
                 })
                 .child(
