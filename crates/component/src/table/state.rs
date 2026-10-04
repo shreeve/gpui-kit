@@ -710,7 +710,7 @@ where
             .map(|col_ix| {
                 let column = self.delegate().column(col_ix, cx);
                 ColGroup {
-                    width: column.width.clamp(column.min_width, column.max_width),
+                    width: column.width.max(column.min_width).min(column.max_width),
                     bounds: Bounds::default(),
                     column,
                 }
