@@ -453,6 +453,7 @@ DataTable::new(&state)
     .with_size(px(48.))             // Custom uniform row height
     .stripe(true)                   // Alternating row colors
     .bordered(true)                 // Border around table
+    .fixed_cols_border(true)        // Border after the fixed columns
     .scrollbar_visible(true, true)  // Vertical, horizontal scrollbars
 ```
 
