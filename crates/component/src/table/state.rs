@@ -1015,7 +1015,15 @@ where
         }
 
         // Column selection mode
-        self.set_selected_col(0, cx);
+        if self.selection_mode.is_column() {
+            self.set_selected_col(0, cx);
+            return;
+        }
+
+        // Row selection mode
+        if self.row_selectable && self.delegate.rows_count(cx) > 0 {
+            self.set_selected_row(0, cx);
+        }
     }
 
     pub(super) fn action_select_last_column(
@@ -1038,7 +1046,16 @@ where
         }
 
         // Column selection mode
-        self.set_selected_col(columns_count.saturating_sub(1), cx);
+        if self.selection_mode.is_column() {
+            self.set_selected_col(columns_count.saturating_sub(1), cx);
+            return;
+        }
+
+        // Row selection mode
+        let rows_count = self.delegate.rows_count(cx);
+        if self.row_selectable && rows_count > 0 {
+            self.set_selected_row(rows_count - 1, cx);
+        }
     }
 
     pub(super) fn action_select_page_up(
