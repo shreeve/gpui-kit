@@ -5129,6 +5129,29 @@ mod tests {
     }
 
     #[gpui::test]
+    fn test_prewrap_counts_wrapped_rows_before_the_first_paint(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let mut input = None;
+        cx.open_window(size(px(400.), px(100.)), |window, cx| {
+            let text = "select id, name, email, phone from users where active\nlimit 10";
+            let font = window.text_style().font();
+            let editor = cx.new(|cx| {
+                let mut state = crate::input::EditorState::new(window, cx).default_value(text);
+                state.prewrap(font, px(14.), px(120.), cx);
+                state
+            });
+            input = Some(editor);
+            gpui::EmptyView
+        });
+        let input = input.unwrap();
+        let (lines, rows) = input.read_with(cx, |state, _| {
+            (state.text.lines_len(), state.wrap_row_count())
+        });
+        assert_eq!(lines, 2);
+        assert!(rows > lines, "{rows} wrapped rows for {lines} lines");
+    }
+
+    #[gpui::test]
     fn test_set_line_number_notifies_only_on_change(cx: &mut TestAppContext) {
         use std::{cell::Cell, rc::Rc};
 
@@ -10215,6 +10238,33 @@ impl InputBaseState<crate::input::EditorMode> {
             *l = line_number;
         }
         self
+    }
+
+    /// The soft-wrapped row count from the last layout, the count the scroll
+    /// height uses.
+    ///
+    /// The buffer's line count undercounts it whenever a line wraps, so a host
+    /// that sizes an editor to its content, such as a read-only one, uses this.
+    pub fn wrap_row_count(&self) -> usize {
+        self.display_map.wrap_row_count()
+    }
+
+    /// Wrap the text for `font`, `font_size` and `width` ahead of layout, so
+    /// that [`Self::wrap_row_count`] is right before the first paint.
+    ///
+    /// `width` is the width the text wraps at, which is the editor's text
+    /// width less its gutter and right margin. Layout stays the source of truth
+    /// afterwards.
+    pub fn prewrap(
+        &mut self,
+        font: gpui::Font,
+        font_size: Pixels,
+        width: Pixels,
+        cx: &mut Context<Self>,
+    ) {
+        self.display_map.ensure_text_prepared(&self.text, cx);
+        self.display_map.set_font(font, font_size, cx);
+        self.display_map.on_layout_changed(Some(width), cx);
     }
 
     /// Set line number.
