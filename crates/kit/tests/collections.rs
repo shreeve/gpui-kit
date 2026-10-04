@@ -555,6 +555,35 @@ fn table_reports_one_scrollable_column_with_and_without_fixed_columns(cx: &mut T
     }
 }
 
+#[gpui_kit::test]
+fn table_modifier_clicks_select_rows_unless_turned_off(cx: &mut TestAppContext) {
+    cx.update(gpui_kit::init);
+    let secondary = Modifiers::secondary_key();
+    let shift = Modifiers::shift();
+    for (select_on_modifier_click, expected) in [(true, Some(3)), (false, Some(1))] {
+        let (handle, handle_content) =
+            common::open_window(cx, Some(size(px(640.), px(320.))), |window, cx| {
+                cx.new(|cx| Records {
+                    table: cx.new(|cx| {
+                        TableState::new(Rows, window, cx)
+                            .select_on_modifier_click(select_on_modifier_click)
+                    }),
+                })
+            });
+        cx.update_window(handle.into(), |_, window, cx| {
+            window.click(("row", 1usize), cx);
+            window.click_with_modifiers(("row", 3usize), secondary, cx);
+            let table = handle_content.read(cx).table.clone();
+            assert_eq!(table.read(cx).selected_row(), expected);
+            window.click_with_modifiers(("row", 3usize), shift, cx);
+            assert_eq!(table.read(cx).selected_row(), expected);
+            window.click(("row", 3usize), cx);
+            assert_eq!(table.read(cx).selected_row(), Some(3));
+        })
+        .unwrap();
+    }
+}
+
 struct Choices {
     confirmed: Vec<bool>,
 }
