@@ -1564,6 +1564,22 @@ where
     }
 
     /// Render the row header cell (when cell_selectable is enabled)
+    /// The border on the right edge of the fixed columns, unless turned off
+    /// with [`DataTable::fixed_cols_border`].
+    fn render_fixed_cols_border(&self, cx: &App) -> Option<Div> {
+        self.options.fixed_cols_border.then(|| {
+            div()
+                .absolute()
+                .top_0()
+                .right_0()
+                .bottom_0()
+                .w_0()
+                .flex_shrink_0()
+                .border_r_1()
+                .border_color(cx.theme().border)
+        })
+    }
+
     fn render_row_header_cell(
         &self,
         row_ix: usize,
@@ -1892,18 +1908,7 @@ where
                                     }))
                             }),
                         ))
-                        .child(
-                            // Fixed columns border
-                            div()
-                                .absolute()
-                                .top_0()
-                                .right_0()
-                                .bottom_0()
-                                .w_0()
-                                .flex_shrink_0()
-                                .border_r_1()
-                                .border_color(cx.theme().border),
-                        )
+                        .children(self.render_fixed_cols_border(cx))
                         .on_prepaint(move |bounds, _, cx| {
                             view.update(cx, |r, _| r.fixed_head_cols_bounds = bounds)
                         }),
@@ -2115,18 +2120,7 @@ where
 
                                 items
                             })
-                            .child(
-                                // Fixed columns border
-                                div()
-                                    .absolute()
-                                    .top_0()
-                                    .right_0()
-                                    .bottom_0()
-                                    .w_0()
-                                    .flex_shrink_0()
-                                    .border_r_1()
-                                    .border_color(cx.theme().border),
-                            ),
+                            .children(self.render_fixed_cols_border(cx)),
                     )
                 })
                 .child(
